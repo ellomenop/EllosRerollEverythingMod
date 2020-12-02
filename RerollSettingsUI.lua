@@ -4,7 +4,7 @@ EllosRerollEverythingMod.RerollTypeToInGameName = {
   Chaos = "Chaos Boons",
   Hermes = "Hermes Boons",
   Boon = "Other God Boons",
-  Pom = "Poms",
+  Pom = "Poms of Power",
   Shop = "Wells of Charon",
   SellTrait = "Purging Pools",
 }
@@ -39,21 +39,23 @@ function IterateSortedByRerollType(t)
 end
 
 ModUtil.WrapBaseFunction("CreatePrimaryBacking", function ( baseFunc )
-  local components = ScreenAnchors.TraitTrayScreen.Components
-  components.RerollConfigButton = CreateScreenComponent({ Name = "ButtonDefault", Scale = 1.0, Group = "Combat_Menu_TraitTray", X = CombatUI.TraitUIStart + 105 + 300, Y = 930 })
-  components.RerollConfigButton.OnPressedFunctionName = "OpenRerollSettingsScreen"
-  CreateTextBox({ Id = components.RerollConfigButton.Id,
-      Text = "Reroll Options",
-      FontSize = 22,
-      Color = Color.White,
-      Font = "AlegreyaSansSCRegular",
-      ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2},
-      Justification = "Center",
-      DataProperties =
-      {
-        OpacityWithOwner = true,
-      },
-    })
+  if not IsScreenOpen( "RunClear" ) then
+    local components = ScreenAnchors.TraitTrayScreen.Components
+    components.RerollConfigButton = CreateScreenComponent({ Name = "ButtonDefault", Scale = 1.0, Group = "Combat_Menu_TraitTray", X = CombatUI.TraitUIStart + 105 + 300, Y = 930 })
+    components.RerollConfigButton.OnPressedFunctionName = "OpenRerollSettingsScreen"
+    CreateTextBox({ Id = components.RerollConfigButton.Id,
+        Text = "Reroll Options",
+        FontSize = 22,
+        Color = Color.White,
+        Font = "AlegreyaSansSCRegular",
+        ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2},
+        Justification = "Center",
+        DataProperties =
+        {
+          OpacityWithOwner = true,
+        },
+      })
+  end
   baseFunc()
 end, EllosRerollEverythingMod)
 

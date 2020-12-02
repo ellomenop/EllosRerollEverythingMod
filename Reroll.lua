@@ -94,7 +94,7 @@ end, EllosRerollEverythingMod)
 -- BaseOverride is not ideal here, but it allows us to further break out
 -- reroll types and fix an SGG bug that prevents 0 cost rerolls
 ModUtil.BaseOverride("CreateBoonLootButtons", function(lootData, reroll)
-  CurrentRun.NumRerolls = 1000
+  
 	local components = ScreenAnchors.ChoiceScreen.Components
 	local upgradeName = lootData.Name
 	local upgradeChoiceData = LootData[upgradeName]
