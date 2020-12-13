@@ -1,0 +1,10 @@
+{
+    Texts = {
+        "_sequence" = true
+        5397 = {
+          "_replace" = 1
+          Id = "UseLeaveRoom_Reroll"
+          DisplayName = "{I} Proceed \n {G} Alter {#UseGiftPointFormat}(-{$TempTextData.EllosRerollEverythingModDoorRerollCost}{!Icons.ReRoll_Small})"
+        }
+    }
+}

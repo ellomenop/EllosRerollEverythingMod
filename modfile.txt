@@ -1,2 +1,4 @@
 Import "Reroll.lua"
 Import "RerollSettingsUI.lua"
+To "Game/Text/en/HelpText.en.sjson"
+SJSON "helptext.sjson"

@@ -1,6 +1,7 @@
 ModUtil.RegisterMod("EllosRerollEverythingMod")
 
 local config = {
+  NumStartingRerolls = nil,
   BaseRerollCosts = { -- Cost of first reroll, set to -1 to disable reroll
     Hammer = 1, -- Hammers
     Chaos = 1, -- Chaos
@@ -9,6 +10,7 @@ local config = {
     Pom = 1, -- Poms
     Shop = 1, -- Wells of Charon
     SellTrait = 1, -- Purging Pools
+    Door = 1, -- Exit Doors
   },
   RerollIncrements = { -- Amount the reroll cost increases after each reroll
     Hammer = 1,
@@ -18,6 +20,7 @@ local config = {
     Pom = 1,
     Shop = 1,
     SellTrait = 1,
+    Door = 0,
   }
 }
 EllosRerollEverythingMod.config = config
@@ -43,6 +46,7 @@ EllosRerollEverythingMod.LootNameToRerollType = {
 -- Helper to force update of the reroll costs
 function updateRerollCostsFromConfig()
   ModUtil.MapSetTable(RerollCosts, EllosRerollEverythingMod.config.BaseRerollCosts)
+  CurrentRun.CurrentRoom.SpentRerolls = {}
   --RerollCosts = DeepCopyTable(EllosRerollEverythingMod.config.BaseRerollCosts)
 end
 
@@ -75,14 +79,15 @@ ModUtil.BaseOverride("AttemptPanelReroll", function(screen, button)
   rerollType = EllosRerollEverythingMod.LootNameToRerollType[lootName]
 
 	IncrementTableValue( CurrentRun.CurrentRoom.SpentRerolls, button.RerollId, config.RerollIncrements[rerollType] )
-  ----------------------------------------------------------------------------
-  -- EllosRerollEverythingMod edits end here
-  ----------------------------------------------------------------------------
 
 	UpdateRerollUI( CurrentRun.NumRerolls )
 
-	RandomSynchronize( CurrentRun.NumRerolls )
+	--RandomSynchronize( CurrentRun.NumRerolls )
+  RandomSynchronize( math.random(100) ) -- TODO: Make this count up regardless of spent rerolls (in case cost = 0)
 	InvalidateCheckpoint()
+  ----------------------------------------------------------------------------
+  -- EllosRerollEverythingMod edits end here
+  ----------------------------------------------------------------------------
 
 	if button.RerollFunctionName and _G[button.RerollFunctionName] then
 		RerollPanelPresentation( screen, button )
@@ -94,7 +99,6 @@ end, EllosRerollEverythingMod)
 -- BaseOverride is not ideal here, but it allows us to further break out
 -- reroll types and fix an SGG bug that prevents 0 cost rerolls
 ModUtil.BaseOverride("CreateBoonLootButtons", function(lootData, reroll)
-  
 	local components = ScreenAnchors.ChoiceScreen.Components
 	local upgradeName = lootData.Name
 	local upgradeChoiceData = LootData[upgradeName]
@@ -549,4 +553,266 @@ ModUtil.BaseOverride("CreateBoonLootButtons", function(lootData, reroll)
   ----------------------------------------------------------------------------
   -- EllosRerollEverythingMod edits end here
   ----------------------------------------------------------------------------
+end, EllosRerollEverythingMod)
+
+-- Door Reroll check
+ModUtil.BaseOverride("AttemptReroll", function(run, target)
+	if target == nil or not target.CanBeRerolled then
+		return
+	end
+
+	local rerollFunction = _G[target.RerollFunctionName]
+	if rerollFunction == nil then
+		return
+	end
+
+  local cost = RerollCosts.Door
+  CurrentRun.CurrentRoom.SpentRerolls = CurrentRun.CurrentRoom.SpentRerolls or {}
+
+  local increment = 0
+  if CurrentRun.CurrentRoom.SpentRerolls then
+    increment = CurrentRun.CurrentRoom.SpentRerolls["DoorSpentRerolls"] or 0
+  end
+  cost = cost + increment
+
+  -- TODO: Handle the not enough rerolls case customly
+  if run.NumRerolls < cost or cost < 0 then
+    return
+  end
+
+	run.NumRerolls = run.NumRerolls - cost
+  IncrementTableValue( CurrentRun.CurrentRoom.SpentRerolls, "DoorSpentRerolls", config.RerollIncrements.Door )
+	UpdateRerollUI( run.NumRerolls )
+
+	-- RandomSynchronize( run.NumRerolls )
+  RandomSynchronize( math.random(100) )
+
+	AddInputBlock({ Name = "AttemptReroll" })
+	PreRerollPresentation( run, target )
+	rerollFunction( run, target )
+	PostRerollPresentation( run, target )
+
+	InvalidateCheckpoint()
+
+	RemoveInputBlock({ Name = "AttemptReroll" })
+end, EllosRerollEverythingMod)
+
+-- Wells of Charon
+ModUtil.BaseOverride("CreateStoreButtons", function()
+
+	local itemLocationStartY = ShopUI.ShopItemStartY
+	local itemLocationYSpacer = ShopUI.ShopItemSpacerY
+	local itemLocationMaxY = itemLocationStartY + 4 * itemLocationYSpacer
+
+	local itemLocationStartX = ShopUI.ShopItemStartX
+	local itemLocationXSpacer = ShopUI.ShopItemSpacerX
+	local itemLocationMaxX = itemLocationStartX + 1 * itemLocationXSpacer
+
+	local itemLocationTextBoxOffset = 380
+
+	local itemLocationX = itemLocationStartX
+	local itemLocationY = itemLocationStartY
+
+	local components = CurrentRun.CurrentRoom.Store.Screen.Components
+
+	local numButtons = StoreData.WorldShop.MaxOffers
+	if numButtons == nil then
+		numButtons = 0
+		for i, groupData in pairs( StoreData.WorldShop.GroupsOf ) do
+			numButtons = numButtons + groupData.Offers
+		end
+	end
+
+	local firstUseable = false
+	for itemIndex = 1, numButtons do
+		local upgradeData = CurrentRun.CurrentRoom.Store.StoreOptions[itemIndex]
+
+		local itemBackingSoldOutKey = "ItemBackingSoldOut"..itemIndex
+		components[itemBackingSoldOutKey] = CreateScreenComponent({ Name = "BoonSlotInactive"..itemIndex, Group = "Combat_Menu", Scale = 1, X = itemLocationX, Y = itemLocationY })
+
+		if upgradeData ~= nil then
+			if not upgradeData.Processed then
+				if upgradeData.Type == "Trait" then
+					upgradeData = GetProcessedTraitData({ Unit = CurrentRun.Hero, TraitName = upgradeData.Name })
+					if upgradeData.CostIncreasePerStack ~= nil then
+						upgradeData.Cost = upgradeData.Cost + GetTraitCount(CurrentRun.Hero, upgradeData) * upgradeData.CostIncreasePerStack
+					end
+					upgradeData.Type = "Trait"
+					SetTraitTextData( upgradeData )
+				elseif upgradeData.Type == "Consumable" then
+					upgradeData = GetRampedConsumableData( ConsumableData[upgradeData.Name] )
+					upgradeData.Type = "Consumable"
+				elseif upgradeData.Type == "Cosmetic" then
+					upgradeData = DeepCopyTable( ConditionalItemData[upgradeData.Name] )
+					upgradeData.Type = "Cosmetic"
+				end
+
+				local costMultiplier = 1 + ( GetNumMetaUpgrades( "ShopPricesShrineUpgrade" ) * ( MetaUpgradeData.ShopPricesShrineUpgrade.ChangeValue - 1 ) )
+				costMultiplier = costMultiplier * GetTotalHeroTraitValue("StoreCostMultiplier", {IsMultiplier = true})
+				if costMultiplier ~= 1 then
+					upgradeData.Cost = round( upgradeData.Cost * costMultiplier )
+				end
+
+				upgradeData.Processed = true
+			elseif upgradeData.Type == "Trait" then
+				RecalculateStoreTraitDurations( upgradeData )
+			end
+
+			CurrentRun.CurrentRoom.Store.StoreOptions[itemIndex] = upgradeData
+			local tooltipData = upgradeData
+
+
+			local purchaseButtonKey = "PurchaseButton"..itemIndex
+			components[purchaseButtonKey] = CreateScreenComponent({ Name = "BoonSlot"..itemIndex, Group = "Combat_Menu", Scale = 1, X = itemLocationX, Y = itemLocationY })
+			SetInteractProperty({ DestinationId = components[purchaseButtonKey].Id, Property = "TooltipOffsetX", Value = 665 })
+			SetInteractProperty({ DestinationId = components[purchaseButtonKey].Id, Property = "FreeFormSelectOffsetX", Value = -200 })
+
+			if upgradeData.Icon ~= nil then
+				local iconKey = "Icon"..itemIndex
+				components[iconKey] = CreateScreenComponent({ Name = "BlankObstacle", X = itemLocationX - 343, Y = itemLocationY, Group = "Combat_Menu" })
+				SetAnimation({ DestinationId = components[iconKey].Id , Name = upgradeData.Icon.."_Large" })
+			end
+
+			local itemBackingKey = "Backing"..itemIndex
+			components[itemBackingKey] = CreateScreenComponent({ Name = "BlankObstacle", Group = "Combat_Menu", X = itemLocationX + itemLocationTextBoxOffset, Y = itemLocationY })
+
+			local purchaseButtonTitleKey = "PurchaseButtonTitle"..itemIndex
+			components[purchaseButtonTitleKey] = CreateScreenComponent({ Name = "BlankObstacle", Group = "Combat_Menu", Scale = 1, X = itemLocationX, Y = itemLocationY })
+			CreateTextBoxWithFormat(MergeTables({ Id = components[purchaseButtonKey].Id,
+				Text = GetTraitTooltip( upgradeData ),
+				OffsetX = -245,
+				OffsetY = -23,
+				Format = "BaseFormat",
+				UseDescription = true,
+				VariableAutoFormat = "BoldFormatGraft",
+				LuaKey = "TooltipData",
+				LuaValue = tooltipData,
+				Justification = "Left",
+				VerticalJustification = "Top",
+				LineSpacingBottom = 8,
+				Width = "665" },LocalizationData.SellTraitScripts.ShopButton))
+
+
+			local costString = "@GUI\\Icons\\Currency_Small"
+			costString = upgradeData.Cost .. " " .. costString
+			local costColor = Color.CostAffordableShop
+			if CurrentRun.Money ~= nil and CurrentRun.Money < upgradeData.Cost then
+				costColor = Color.CostUnaffordable
+			end
+
+			if upgradeData.HealthCost then
+				costString = upgradeData.HealthCost .. " @GUI\\Icons\\Life_Small"
+				if CurrentRun.Hero.Health > upgradeData.HealthCost then
+					costColor = Color.CostAffordableShop
+				else
+					costColor = Color.CostUnaffordable
+				end
+			end
+
+			local needsQuestIcon = false
+			if upgradeData.Type == "Trait" then
+				if not GameState.TraitsTaken[upgradeData.Name] and HasActiveQuestForTrait( upgradeData.Name ) then
+					needsQuestIcon = true
+				end
+			elseif upgradeData.Type == "Consumable" then
+				if not GameState.ItemInteractions[upgradeData.Name] and HasActiveQuestForItem( upgradeData.Name ) then
+					needsQuestIcon = true
+				end
+			end
+			if needsQuestIcon then
+				components[purchaseButtonKey.."QuestIcon"] = CreateScreenComponent({ Name = "BlankObstacle", Group = "Combat_Menu", X = itemLocationX + 112, Y = itemLocationY - 55 })
+				SetAnimation({ DestinationId = components[purchaseButtonKey.."QuestIcon"].Id, Name = "QuestItemFound" })
+				-- Silent toolip
+				CreateTextBox({ Id = components[purchaseButtonKey].Id, TextSymbolScale = 0, Text = "TraitQuestItem", Color = Color.Transparent, LuaKey = "TooltipData", LuaValue = tooltipData, })
+			end
+
+			components[purchaseButtonKey].OnPressedFunctionName = "HandleStorePurchase"
+			if not firstUseable then
+				TeleportCursor({ OffsetX = itemLocationX, OffsetY = itemLocationY, ForceUseCheck = true })
+				firstUseable = true
+			end
+
+			CreateTextBox(MergeTables({ Id = components[purchaseButtonTitleKey].Id, Text = costString, OffsetX = 410, OffsetY = -50, FontSize = 28, Color = costColor, Font = "AlegreyaSansSCRegular", Justification = "Right" },LocalizationData.SellTraitScripts.ShopButton))
+
+			CreateTextBox(MergeTables({ Id = components[purchaseButtonTitleKey].Id, Text = upgradeData.Name,
+				FontSize = 25,
+				OffsetX = -245, OffsetY = -50,
+				Width = 720,
+				Color = costColor,
+				Font = "AlegreyaSansSCBold",
+				ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2},
+				Justification = "Left",
+			},LocalizationData.SellTraitScripts.ShopButton))
+
+			components[purchaseButtonKey].Data = upgradeData
+			components[purchaseButtonKey].WeaponName = currentWeapon
+			components[purchaseButtonKey].Index = itemIndex
+			components[purchaseButtonKey].TitleId = components[purchaseButtonTitleKey].Id
+
+			if CurrentRun.CurrentRoom.Store.Buttons == nil then
+				CurrentRun.CurrentRoom.Store.Buttons = {}
+			end
+			table.insert(CurrentRun.CurrentRoom.Store.Buttons, components[purchaseButtonKey])
+		end
+		itemLocationX = itemLocationX + itemLocationXSpacer
+		if itemLocationX >= itemLocationMaxX then
+			itemLocationX = itemLocationStartX
+			itemLocationY = itemLocationY + itemLocationYSpacer
+		end
+	end
+
+	if IsMetaUpgradeSelected("RerollPanelMetaUpgrade") then
+		local increment = 0
+    local cost = RerollCosts.Shop
+
+    if CurrentRun.CurrentRoom.SpentRerolls then
+      increment = CurrentRun.CurrentRoom.SpentRerolls[CurrentRun.CurrentRoom.Store.Screen.Name] or 0
+    end
+    cost = cost + increment
+
+		local color = Color.White
+		if CurrentRun.NumRerolls < cost or cost < 0 then
+			color = Color.CostUnaffordable
+		end
+
+		if cost >= 0 then
+			components["RerollPanel"] = CreateScreenComponent({ Name = "ShopRerollButton", Scale = 1.0, Group = "Combat_Menu" })
+			Attach({ Id = components["RerollPanel"].Id, DestinationId = components.ShopBackground.Id, OffsetX = -200, OffsetY = 440 })
+			components["RerollPanel"].OnPressedFunctionName = "AttemptPanelReroll"
+			components["RerollPanel"].RerollFunctionName = "RerollStore"
+			components["RerollPanel"].Cost = cost
+			components["RerollPanel"].RerollColor = {48, 25, 83, 255}
+			components["RerollPanel"].RerollId = CurrentRun.CurrentRoom.Store.Screen.Name
+			CreateTextBox({ Id = components["RerollPanel"].Id, Text = "RerollPanelMetaUpgrade_ShortTotal", OffsetX = 28, OffsetY = -5,
+			ShadowColor = {0,0,0,1}, ShadowOffset={0,3}, OutlineThickness = 3, OutlineColor = {0,0,0,1},
+			FontSize = 28, Color = color, Font = "AlegreyaSansSCExtraBold", LuaKey = "TempTextData", LuaValue = { Amount = cost }})
+			SetInteractProperty({ DestinationId = components["RerollPanel"].Id, Property = "TooltipOffsetX", Value = 850 })
+			CreateTextBox({ Id = components["RerollPanel"].Id, Text = "MetaUpgradeRerollHint", FontSize = 1, Color = Color.Transparent, Font = "AlegreyaSansSCExtraBold", LuaKey = "TempTextData", LuaValue = { Amount = cost }})
+		end
+	end
+end, EllosRerollEverythingMod)
+
+-- Add our special use data to all use text data.  Only door rerolls will actually use it
+ModUtil.WrapBaseFunction("GetUseData", function ( baseFunc, useTarget )
+  local useData = baseFunc(useTarget)
+  local cost = (RerollCosts.Door or 0) + (ModUtil.PathGet("CurrentRun.CurrentRoom.SpentRerolls.DoorSpentRerolls") or 0)
+  useData = MergeTables(useData, {EllosRerollEverythingModDoorRerollCost = tostring(cost)})
+  return useData
+end, EllosRerollEverythingMod)
+
+-- Set starting number of rerolls if it has been specified
+ModUtil.WrapBaseFunction("StartNewRun", function ( baseFunc, currentRun )
+  local run = baseFunc(currentRun)
+  if config.NumStartingRerolls then
+    run.NumRerolls = config.NumStartingRerolls
+  end
+  return run
+end, EllosRerollEverythingMod)
+
+-- Enable both fated persuation and authority
+ModUtil.WrapBaseFunction("IsMetaUpgradeSelected", function ( baseFunc, metaUpgrade )
+  if metaUpgrade == "RerollMetaUpgrade" or metaUpgrade == "RerollPanelMetaUpgrade" then
+    return true
+  end
+  return baseFunc(metaUpgrade)
 end, EllosRerollEverythingMod)

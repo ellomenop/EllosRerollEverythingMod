@@ -7,6 +7,7 @@ EllosRerollEverythingMod.RerollTypeToInGameName = {
   Pom = "Poms of Power",
   Shop = "Wells of Charon",
   SellTrait = "Purging Pools",
+  Door = "Room Rewards"
 }
 
 -- Order to show the reroll types in the UI
@@ -18,6 +19,7 @@ EllosRerollEverythingMod.RerollTypeOrdering = {
   Pom = 5,
   Shop = 6,
   SellTrait = 7,
+  Door = 8,
 }
 RerollSettingsMenu = {}
 
@@ -59,6 +61,16 @@ ModUtil.WrapBaseFunction("CreatePrimaryBacking", function ( baseFunc )
   baseFunc()
 end, EllosRerollEverythingMod)
 
+function ModifyNumRerolls(screen, button)
+  local numRerolls = ((EllosRerollEverythingMod.config.NumStartingRerolls or CurrentRun.NumRerolls) or 0)
+  numRerolls = numRerolls + button.ModifyAmount
+  numRerolls = math.max(numRerolls, 0)
+  EllosRerollEverythingMod.config.NumStartingRerolls = numRerolls
+
+  ModifyTextBox({ Id = button.TextLabelId, Text = tostring(numRerolls) })
+  UpdateRerollUI( EllosRerollEverythingMod.config.NumStartingRerolls )
+end
+
 -- Update the BaseRerollCost for a reroll type
 function ModifyRerollConfig(screen, button)
   local configToUpdate = EllosRerollEverythingMod.config[button.ConfigToUpdate]
@@ -92,9 +104,7 @@ function MakeAllRerollsFree(screen, button)
     EllosRerollEverythingMod.config.RerollIncrements[key] = 0
   end
 
-  for _, value in pairs(screen.TextBoxes) do
-    ModifyTextBox({ Id = value.Id, Text = 0, ColorTarget = Color.White})
-  end
+  updateRerollConfigTextBoxes(screen)
 end
 
 function DisableRerolls(screen, button)
@@ -106,7 +116,7 @@ function DisableRerolls(screen, button)
 end
 
 function ResetRerollConfigToDefault(screen, button)
-  local config = {
+  EllosRerollEverythingMod.config = {
     BaseRerollCosts = { -- Cost of first reroll, set to -1 to disable reroll
       Hammer = 1, -- Hammers
       Chaos = 1, -- Chaos
@@ -115,6 +125,7 @@ function ResetRerollConfigToDefault(screen, button)
       Pom = 1, -- Poms
       Shop = 1, -- Wells of Charon
       SellTrait = 1, -- Purging Pools
+      Door = 1, -- Exit Doors
     },
     RerollIncrements = { -- Amount the reroll cost increases after each reroll
       Hammer = 1,
@@ -124,9 +135,9 @@ function ResetRerollConfigToDefault(screen, button)
       Pom = 1,
       Shop = 1,
       SellTrait = 1,
+      Door = 0,
     }
   }
-  EllosRerollEverythingMod.config = config
 
   updateRerollConfigTextBoxes(screen)
 end
@@ -310,6 +321,48 @@ function OpenRerollSettingsMenu( args )
 
       offsetY = offsetY + 60
   end
+
+  -- Starting Reroll Count
+  local startingRerollCount = CreateScreenComponent({ Name = "BlankObstacle", Scale = 1.0, Group = "Combat_Menu" })
+  components["StartingRerollCount"] = startingRerollCount
+  Attach({ Id = startingRerollCount.Id, DestinationId = components.ShopBackground.Id, OffsetX = offsetX, OffsetY = offsetY})
+
+  -- First Column
+  local leftArrowOffsetX = 85
+  local leftArrow = CreateScreenComponent({ Name = "LevelUpArrowLeft", Scale = 1.0, Group = "Combat_Menu" })
+  leftArrow.OnPressedFunctionName = "ModifyNumRerolls"
+  leftArrow.ModifyAmount = -1
+  leftArrow.TextLabelId = leftArrow.Id
+  components["StartingRerollCostCol1LeftArrow"] = leftArrow
+  Attach({ Id = leftArrow.Id, DestinationId = startingRerollCount.Id, OffsetX = leftArrowOffsetX, OffsetY = 0 })
+
+  local rightArrow = CreateScreenComponent({ Name = "LevelUpArrowRight", Scale = 1.0, Group = "Combat_Menu" })
+  rightArrow.OnPressedFunctionName = "ModifyNumRerolls"
+  rightArrow.ModifyAmount = 1
+  rightArrow.TextLabelId = leftArrow.Id
+  components["StartingRerollCostCol1RightArrow"] = rightArrow
+  Attach({ Id = rightArrow.Id, DestinationId = startingRerollCount.Id, OffsetX = leftArrowOffsetX + 35, OffsetY = 0 })
+  CreateTextBox({
+    Id = leftArrow.Id,
+    Text = ((EllosRerollEverythingMod.config.NumStartingRerolls or CurrentRun.NumRerolls) or 0),
+    FontSize = 28,
+    OffsetX = -35,
+    Color = Color.White,
+    Font = "AlegreyaSansSCBold",
+    ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 3},
+    OutlineThickness = 12, OutlineColor = {0,0,0,1},
+    Justification = "Right"})
+
+  CreateTextBox({
+    Id = startingRerollCount.Id,
+    Text = "# of Starting Rerolls",
+    FontSize = 28,
+    OffsetX = - 500 - 135,
+    Color = {255, 235, 128, 255},
+    Font = "AlegreyaSansSCBold",
+    ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 3},
+    OutlineThickness = 12, OutlineColor = {0,0,0,1},
+    Justification = "Left"})
 
   -- Macros
   components.MakeAllRerollsFree = CreateScreenComponent({ Name = "ButtonDefault", Group = "Combat_Menu"})
