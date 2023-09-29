@@ -25,25 +25,28 @@ RerollSettingsMenu = {}
 
 -- Function to iterate through the reroll types in the order specified by EllosRerollEverythingMod.RerollTypeOrdering
 function IterateSortedByRerollType(t)
-  local i = {}
-  for k in next, t do
-    table.insert(i, k)
+  local keys = {}
+  for k in pairs(t) do
+    keys[#keys + 1] = k
   end
-  table.sort(i, function(key1, key2)
-    return EllosRerollEverythingMod.RerollTypeOrdering[key1] > EllosRerollEverythingMod.RerollTypeOrdering[key2]
-  end)
-  return function()
-    local k = table.remove(i)
-    if k ~= nil then
-      return k, t[k]
+  table.sort(keys, function(key1, key2)
+      return EllosRerollEverythingMod.RerollTypeOrdering[key1] > EllosRerollEverythingMod.RerollTypeOrdering[key2]
+    end)
+  local j = 0
+  return
+    function()
+        j = j + 1
+        local k = keys[j]
+        if k ~= nil then
+          return k, t[k]
+        end
     end
-  end
 end
 
 ModUtil.WrapBaseFunction("CreatePrimaryBacking", function ( baseFunc )
   if not IsScreenOpen( "RunClear" ) then
     local components = ScreenAnchors.TraitTrayScreen.Components
-    components.RerollConfigButton = CreateScreenComponent({ Name = "ButtonDefault", Scale = 1.0, Group = "Combat_Menu_TraitTray", X = CombatUI.TraitUIStart + 105 + 300, Y = 930 })
+    components.RerollConfigButton = CreateScreenComponent({ Name = "ButtonDefault", Scale = 1.0, Group = "TraitTrayTraits", X = CombatUI.TraitUIStart + 105 + 300, Y = 930 })
     components.RerollConfigButton.OnPressedFunctionName = "OpenRerollSettingsScreen"
     CreateTextBox({ Id = components.RerollConfigButton.Id,
         Text = "Reroll Options",
